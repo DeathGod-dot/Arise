@@ -40,7 +40,11 @@ class StatusViewModel @Inject constructor(
                 repository.getClearedQuestsCount(),
                 repository.getPendingQuestsCountToday()
             ) { profile, clearedCount, pendingCount ->
-                val p = profile ?: createDefaultProfile()
+                val rawProfile = profile ?: createDefaultProfile()
+                val p = RewardEngine.recalculateVitals(rawProfile)
+                if (rawProfile.maxHp != p.maxHp || rawProfile.maxMp != p.maxMp || rawProfile.rank != p.rank) {
+                    repository.upsertProfile(p)
+                }
                 val report = computeReportData(p, clearedCount, pendingCount)
                 StatusUiState(
                     profile = p,
@@ -117,7 +121,7 @@ class StatusViewModel @Inject constructor(
     private suspend fun createDefaultProfile(): HunterProfile {
         val profile = HunterProfile()
         repository.upsertProfile(profile)
-        repository.logEvent(LogIcon.INFO, "System activated. Hunter status initialized.")
+        repository.logEvent(LogIcon.INFO, "Hunter profile initialized.")
         return profile
     }
 }

@@ -52,6 +52,9 @@ interface QuestDao {
     @Query("UPDATE sub_objectives SET current = :current, isComplete = :isComplete WHERE id = :id")
     suspend fun updateSubObjective(id: String, current: Int, isComplete: Boolean)
 
+    @Query("UPDATE sub_objectives SET current = MIN(current + :amount, target), isComplete = ((current + :amount) >= target) WHERE id = :id")
+    suspend fun atomicIncrementSubObjective(id: String, amount: Int)
+
     @Query("UPDATE sub_objectives SET proofImageUri = :uri WHERE id = :id")
     suspend fun updateProofImage(id: String, uri: String)
 
@@ -62,7 +65,7 @@ interface QuestDao {
     fun getPendingQuestsCountToday(date: String): Flow<Int>
 
     @Query("UPDATE quests SET reflectionText = :text WHERE id = :questId")
-    suspend fun updateReflection(questId: String, text: String)
+    suspend fun updateReflection(questId: String, text: String?)
 
     @Query("SELECT COUNT(*) FROM quests WHERE dayAssigned = :date AND status != 'CLEARED'")
     suspend fun getIncompleteQuestCount(date: String): Int

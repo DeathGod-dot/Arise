@@ -733,15 +733,18 @@ private fun MeditationSessionItem(
     }
 
     // Active Countdown Timer Coroutine with Database Progress Persistence
-    LaunchedEffect(isRunning, remainingSeconds) {
-        if (isRunning && remainingSeconds > 0) {
-            kotlinx.coroutines.delay(1000L)
-            remainingSeconds--
-            val elapsed = sub.target - remainingSeconds
-            viewModel.updateTimerProgress(sub.id, questId, elapsed)
-        } else if (remainingSeconds == 0 && isRunning) {
-            onFinishSession(sub.id)
-            viewModel.completeSubObjectiveWithReflection(sub.id, questId, "")
+    LaunchedEffect(isRunning) {
+        if (isRunning) {
+            while (remainingSeconds > 0) {
+                kotlinx.coroutines.delay(1000L)
+                remainingSeconds--
+                val elapsed = sub.target - remainingSeconds
+                viewModel.updateTimerProgress(sub.id, questId, elapsed)
+            }
+            if (remainingSeconds == 0) {
+                onFinishSession(sub.id)
+                viewModel.completeSubObjectiveWithReflection(sub.id, questId, "")
+            }
         }
     }
 

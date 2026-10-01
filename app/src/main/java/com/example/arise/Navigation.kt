@@ -69,7 +69,12 @@ fun MainAppContent(authViewModel: AuthViewModel) {
             ) {
                 NavDisplay(
                     backStack = backStack,
-                    onBack = { backStack.removeLastOrNull() },
+                    onBack = {
+                        if (backStack.size > 1) {
+                            backStack.removeLast()
+                        }
+                        // At root tab — system handles app exit via default back behavior
+                    },
                     transitionSpec = {
                         val enterOffset = if (isForward) { { w: Int -> (w * 0.12f).toInt() } } else { { w: Int -> -(w * 0.12f).toInt() } }
                         val exitOffset = if (isForward) { { w: Int -> -(w * 0.08f).toInt() } } else { { w: Int -> (w * 0.08f).toInt() } }

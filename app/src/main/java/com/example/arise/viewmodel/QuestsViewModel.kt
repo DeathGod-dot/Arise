@@ -103,11 +103,13 @@ class QuestsViewModel @Inject constructor(
     private suspend fun seedDailyQuests() {
         val today = LocalDate.now()
         val dailyQuests = QuestFactory.createDailyQuests(today)
-        dailyQuests.forEach { (quest, subs) ->
-            repository.insertQuest(quest)
-            repository.insertSubObjectives(subs)
+        repository.withTransaction {
+            dailyQuests.forEach { (quest, subs) ->
+                repository.insertQuest(quest)
+                repository.insertSubObjectives(subs)
+            }
         }
-        repository.logEvent(LogIcon.INFO, "Daily 24-Hour Reset: Fresh daily quests issued by the System for ${today.format(DateTimeFormatter.ISO_LOCAL_DATE)}.")
+        repository.logEvent(LogIcon.INFO, "New daily quests received for ${today.format(DateTimeFormatter.ISO_LOCAL_DATE)}.")
     }
 
     fun completeSubObjectiveWithReflection(subId: String, questId: String, reflectionText: String) {
@@ -120,7 +122,7 @@ class QuestsViewModel @Inject constructor(
             if (reflectionText.isNotBlank()) {
                 repository.updateReflection(questId, reflectionText)
             }
-            repository.logEvent(LogIcon.QUEST_COMPLETE, "Session '${sub.label}' completed.")
+            repository.logEvent(LogIcon.QUEST_COMPLETE, "Completed '${sub.label}'.")
             NotificationHelper.showSubObjectiveCompletedNotification(context, sub.label)
             checkQuestCompletion(questId)
         }
@@ -131,11 +133,8 @@ class QuestsViewModel @Inject constructor(
             val quests = repository.getTodayQuestsOnce()
             val questData = quests.find { it.quest.id == questId } ?: return@launch
             if (questData.quest.status == QuestStatus.CLEARED) return@launch
-            val sub = questData.subObjectives.find { it.id == subId } ?: return@launch
-
-            val newCurrent = (sub.current + 1).coerceAtMost(sub.target)
-            val isComplete = newCurrent >= sub.target
-            repository.updateSubObjective(subId, newCurrent, isComplete)
+            
+            repository.atomicIncrementSubObjective(subId, 1)
             checkQuestCompletion(questId)
         }
     }
@@ -171,51 +170,63 @@ class QuestsViewModel @Inject constructor(
         }
     }
 
+    private val claimRewardsMutex = kotlinx.coroutines.sync.Mutex()
+
     fun claimAllRewards() {
         viewModelScope.launch {
-            val profile = repository.getProfileOnce() ?: return@launch
-            val quests = repository.getTodayQuestsOnce()
-            val completedQuests = quests.filter { it.quest.status == QuestStatus.CLEARED }
-            if (completedQuests.isEmpty()) return@launch
+            claimRewardsMutex.withLock {
+                val today = LocalDate.now()
+                val todayStr = today.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                val profile = repository.getProfileOnce() ?: return@withLock
 
-            // XP/MP/Stats are already deposited per-quest on completion.
-            // claimAllRewards now handles: streak update, daily log acknowledgment, bonus notification.
-            val totalExpGained = completedQuests.sumOf { it.quest.expReward }
-            val totalMpGained = completedQuests.sumOf { it.quest.mpReward }
+                // Early exit: already claimed today — prevents double-tap streak inflation
+                if (profile.lastQuestDate == todayStr) {
+                    _uiState.update { it.copy(rewardsClaimed = true) }
+                    return@withLock
+                }
 
-            repository.logEvent(LogIcon.QUEST_COMPLETE, "All daily rewards claimed. Total EXP: $totalExpGained, Total MP: $totalMpGained.")
+                val quests = repository.getTodayQuestsOnce()
+                val completedQuests = quests.filter { it.quest.status == QuestStatus.CLEARED }
+                if (completedQuests.isEmpty()) return@withLock
 
-            // System Notification for reward claim
-            NotificationHelper.showSystemNotification(
-                context,
-                "SYSTEM NOTICE: ALL DAILIES CLEARED!",
-                "All daily quests completed! Total: +$totalExpGained EXP & +$totalMpGained MP deposited to Hunter Profile."
-            )
+                // XP/MP/Stats are already deposited per-quest on completion.
+                // claimAllRewards now handles: streak update, daily log acknowledgment, bonus notification.
+                val totalExpGained = completedQuests.sumOf { it.quest.expReward }
+                val totalMpGained = completedQuests.sumOf { it.quest.mpReward }
 
-            // Update streak
-            val today = LocalDate.now()
-            val yesterdayStr = today.minusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val todayStr = today.format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val saturdayBeforeSundayStr = today.minusDays(2).format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val isMonday = today.dayOfWeek == java.time.DayOfWeek.MONDAY
+                repository.logEvent(LogIcon.QUEST_COMPLETE, "Claimed daily rewards: +$totalExpGained EXP, +$totalMpGained MP.")
 
-            val streak = if (profile.lastQuestDate == yesterdayStr) {
-                profile.streakDays + 1
-            } else if (isMonday && profile.lastQuestDate == saturdayBeforeSundayStr) {
-                // Sunday rest day preserves streak across weekend
-                profile.streakDays + 1
-            } else if (profile.lastQuestDate == todayStr) {
-                profile.streakDays
-            } else {
-                1
+                // System Notification for reward claim
+                NotificationHelper.showSystemNotification(
+                    context,
+                    "SYSTEM NOTICE: ALL DAILIES CLEARED!",
+                    "All daily quests completed! Total: +$totalExpGained EXP & +$totalMpGained MP deposited to Hunter Profile."
+                )
+
+                // Update streak
+                val yesterdayStr = today.minusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
+                val isMonday = today.dayOfWeek == java.time.DayOfWeek.MONDAY
+                val isTuesday = today.dayOfWeek == java.time.DayOfWeek.TUESDAY
+
+                val streak = if (profile.lastQuestDate == yesterdayStr) {
+                    // Completed yesterday — extend streak
+                    profile.streakDays + 1
+                } else if (isMonday && profile.lastQuestDate == today.minusDays(2).format(DateTimeFormatter.ISO_LOCAL_DATE)) {
+                    // Monday + last was Saturday: Sunday rest day preserves streak
+                    profile.streakDays + 1
+                } else if (isTuesday && profile.lastQuestDate == today.minusDays(3).format(DateTimeFormatter.ISO_LOCAL_DATE)) {
+                    // Tuesday + last was Saturday: Sunday rest day + Monday skip still bridges
+                    profile.streakDays + 1
+                } else {
+                    // Gap too large — reset streak
+                    1
+                }
+
+                // updateStreak writes both streakDays AND lastQuestDate atomically
+                repository.updateStreak(streak, today)
+
+                _uiState.update { it.copy(rewardsClaimed = true) }
             }
-            repository.updateStreak(streak, today)
-
-            // Mark today's date as quest date (controls rewardsClaimed on restart)
-            val updatedProfile = repository.getProfileOnce() ?: return@launch
-            repository.upsertProfile(updatedProfile.copy(lastQuestDate = today.format(DateTimeFormatter.ISO_LOCAL_DATE)))
-            
-            _uiState.update { it.copy(rewardsClaimed = true) }
         }
     }
 
@@ -228,7 +239,7 @@ class QuestsViewModel @Inject constructor(
             val allSubsDone = questData.subObjectives.all { it.isComplete }
             if (allSubsDone && questData.quest.status != QuestStatus.CLEARED) {
                 repository.updateQuestStatus(questId, QuestStatus.CLEARED, System.currentTimeMillis())
-                repository.logEvent(LogIcon.QUEST_COMPLETE, "Daily Quest '${questData.quest.title}' completed.")
+                repository.logEvent(LogIcon.QUEST_COMPLETE, "Finished quest '${questData.quest.title}'.")
                 NotificationHelper.showQuestCompletedNotification(context, questData.quest.title, questData.quest.expReward, questData.quest.mpReward)
 
                 // ─── IMMEDIATE XP/MP/STAT DEPOSIT ON QUEST CLEAR ───
@@ -240,32 +251,37 @@ class QuestsViewModel @Inject constructor(
     }
 
     private suspend fun depositQuestRewards(questData: QuestWithSubObjectives) {
-        val profile = repository.getProfileOnce() ?: return
         val quest = questData.quest
-
-        val (updatedProfile, result) = RewardEngine.processQuestRewards(
-            profile,
-            quest.expReward,
-            quest.mpReward,
-            quest.attributeRewards,
-        )
-        // Update daily snapshot and profile atomically in transaction
         val today = java.time.LocalDate.now()
         val todayStr = today.format(DateTimeFormatter.ISO_LOCAL_DATE)
 
+        var rankedUp = false
+        var newRankName: String? = null
+
         repository.withTransaction {
+            val profile = repository.getProfileOnce() ?: return@withTransaction
+            val (updatedProfile, result) = RewardEngine.processQuestRewards(
+                profile,
+                quest.expReward,
+                quest.mpReward,
+                quest.attributeRewards,
+            )
+
+            rankedUp = result.rankedUp
+            newRankName = result.newRank?.displayName
+
             repository.upsertProfile(updatedProfile)
 
             // Log attribute gains
             result.attributeGains.forEach { gain ->
-                repository.logEvent(LogIcon.STAT_UP, "${gain.attribute.name} increased by ${gain.amount}.")
+                repository.logEvent(LogIcon.STAT_UP, "${gain.attribute.name} +${gain.amount} from training.")
             }
 
             if (result.rankedUp && result.newRank != null) {
                 repository.logEvent(LogIcon.STAT_UP, "RANK UP! You are now a ${result.newRank.displayName} Hunter!")
             }
 
-            repository.logEvent(LogIcon.QUEST_COMPLETE, "Rewards deposited: +${quest.expReward} EXP, +${quest.mpReward} MP for '${quest.title}'.")
+            repository.logEvent(LogIcon.QUEST_COMPLETE, "Earned +${quest.expReward} EXP, +${quest.mpReward} MP from '${quest.title}'.")
 
             val existingSnapshot = repository.getSnapshotForDate(todayStr)
             val prevXp = existingSnapshot?.totalXpEarned ?: 0
@@ -281,8 +297,8 @@ class QuestsViewModel @Inject constructor(
             )
         }
 
-        if (result.rankedUp && result.newRank != null) {
-            NotificationHelper.showLevelUpNotification(context, result.newRank.displayName)
+        if (rankedUp && newRankName != null) {
+            NotificationHelper.showLevelUpNotification(context, newRankName!!)
         }
 
     }
@@ -331,7 +347,7 @@ class QuestsViewModel @Inject constructor(
                     rank = updatedProfile.rank,
                 )
             )
-            repository.logEvent(LogIcon.INFO, "Retroactive XP fix applied: +$missingXp EXP recovered from previously cleared quests.")
+            repository.logEvent(LogIcon.INFO, "Recovered +$missingXp EXP from previously cleared quests.")
             if (result.rankedUp && result.newRank != null) {
                 repository.logEvent(LogIcon.STAT_UP, "RANK UP! You are now a ${result.newRank.displayName} Hunter!")
                 NotificationHelper.showLevelUpNotification(context, result.newRank.displayName)
@@ -341,7 +357,7 @@ class QuestsViewModel @Inject constructor(
             for (questData in uncreditedQuests) {
                 depositQuestRewards(questData)
             }
-            repository.logEvent(LogIcon.INFO, "Retroactive XP fix: Deposited rewards for ${uncreditedQuests.size} previously uncredited quest(s).")
+            repository.logEvent(LogIcon.INFO, "Credited rewards for ${uncreditedQuests.size} quest(s).")
         }
     }
 }

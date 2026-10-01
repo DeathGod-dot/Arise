@@ -44,28 +44,39 @@ class FirestoreSyncRepository @Inject constructor(
                 val data = snapshot.data
                 if (data != null) {
                     val local = ariseRepository.getProfileOnce() ?: HunterProfile()
-                    val remoteProfile = local.copy(
-                        username = data["username"] as? String ?: local.username,
-                        rank = try { HunterRank.valueOf(data["rank"] as? String ?: local.rank.name) } catch (_: Exception) { local.rank },
-                        level = (data["level"] as? Long)?.toInt() ?: local.level,
-                        hp = (data["hp"] as? Long)?.toInt() ?: local.hp,
-                        maxHp = (data["maxHp"] as? Long)?.toInt() ?: local.maxHp,
-                        mp = (data["mp"] as? Long)?.toInt() ?: local.mp,
-                        maxMp = (data["maxMp"] as? Long)?.toInt() ?: local.maxMp,
-                        xp = (data["xp"] as? Long)?.toInt() ?: local.xp,
-                        xpToNextLevel = (data["xpToNextLevel"] as? Long)?.toInt() ?: local.xpToNextLevel,
-                        totalXp = data["totalXp"] as? Long ?: local.totalXp,
-                        str = (data["str"] as? Long)?.toInt() ?: local.str,
-                        agi = (data["agi"] as? Long)?.toInt() ?: local.agi,
-                        sen = (data["sen"] as? Long)?.toInt() ?: local.sen,
-                        vit = (data["vit"] as? Long)?.toInt() ?: local.vit,
-                        int_stat = (data["int_stat"] as? Long)?.toInt() ?: local.int_stat,
-                        streakDays = (data["streakDays"] as? Long)?.toInt() ?: local.streakDays,
-                        avatarUri = data["avatarUri"] as? String ?: local.avatarUri
-                    )
-                    lastPushedProfile = remoteProfile
-                    ariseRepository.upsertProfile(remoteProfile)
-                    ariseRepository.logEvent(LogIcon.INFO, "Cloud Progress Restored: Profile synced from Firestore.")
+                    val remoteTotalXp = data["totalXp"] as? Long ?: 0L
+                    if (remoteTotalXp >= local.totalXp) {
+                        val remoteProfile = local.copy(
+                            username = data["username"] as? String ?: local.username,
+                            rank = try { HunterRank.valueOf(data["rank"] as? String ?: local.rank.name) } catch (_: Exception) { local.rank },
+                            level = (data["level"] as? Long)?.toInt() ?: local.level,
+                            hp = (data["hp"] as? Long)?.toInt() ?: local.hp,
+                            maxHp = (data["maxHp"] as? Long)?.toInt() ?: local.maxHp,
+                            mp = (data["mp"] as? Long)?.toInt() ?: local.mp,
+                            maxMp = (data["maxMp"] as? Long)?.toInt() ?: local.maxMp,
+                            xp = (data["xp"] as? Long)?.toInt() ?: local.xp,
+                            xpToNextLevel = (data["xpToNextLevel"] as? Long)?.toInt() ?: local.xpToNextLevel,
+                            totalXp = data["totalXp"] as? Long ?: local.totalXp,
+                            str = (data["str"] as? Long)?.toInt() ?: local.str,
+                            agi = (data["agi"] as? Long)?.toInt() ?: local.agi,
+                            sen = (data["sen"] as? Long)?.toInt() ?: local.sen,
+                            vit = (data["vit"] as? Long)?.toInt() ?: local.vit,
+                            int_stat = (data["int_stat"] as? Long)?.toInt() ?: local.int_stat,
+                            streakDays = (data["streakDays"] as? Long)?.toInt() ?: local.streakDays,
+                            avatarUri = data["avatarUri"] as? String ?: local.avatarUri,
+                            age = (data["age"] as? Long)?.toInt() ?: local.age,
+                            weightKg = (data["weightKg"] as? Number)?.toFloat() ?: local.weightKg,
+                            alarmAudioUri = data["alarmAudioUri"] as? String ?: local.alarmAudioUri,
+                            alarmToneName = data["alarmToneName"] as? String ?: local.alarmToneName,
+                            createdAt = data["createdAt"] as? Long ?: local.createdAt,
+                            lastQuestDate = data["lastQuestDate"] as? String ?: local.lastQuestDate
+                        )
+                        lastPushedProfile = remoteProfile
+                        ariseRepository.upsertProfile(remoteProfile)
+                        ariseRepository.logEvent(LogIcon.INFO, "Progress restored from cloud backup.")
+                    } else {
+                        pushProfileToCloud(uid, local)
+                    }
                 }
             } else {
                 // First time user — push local profile to Firestore
@@ -78,7 +89,7 @@ class FirestoreSyncRepository @Inject constructor(
             // Listen to ongoing profile changes in Room and push to Firestore
             observeLocalProfileAndSync(uid)
         } catch (e: Exception) {
-            ariseRepository.logEvent(LogIcon.WARNING, "Cloud Sync Warning: ${e.localizedMessage}")
+            ariseRepository.logEvent(LogIcon.WARNING, "Cloud sync issue: ${e.localizedMessage}")
         }
     }
 
@@ -94,7 +105,6 @@ class FirestoreSyncRepository @Inject constructor(
     }
 
     suspend fun pushProfileToCloud(uid: String, profile: HunterProfile) {
-        lastPushedProfile = profile
         try {
             val userDocRef = firestore.collection("users").document(uid).collection("profile").document("hunter_profile")
             val map = mapOf(
@@ -117,9 +127,15 @@ class FirestoreSyncRepository @Inject constructor(
                 "streakDays" to profile.streakDays,
                 "lastQuestDate" to profile.lastQuestDate,
                 "avatarUri" to (profile.avatarUri ?: ""),
+                "age" to profile.age,
+                "weightKg" to profile.weightKg,
+                "alarmAudioUri" to profile.alarmAudioUri,
+                "alarmToneName" to profile.alarmToneName,
+                "createdAt" to profile.createdAt,
                 "lastSyncedAt" to System.currentTimeMillis()
             )
             userDocRef.set(map, SetOptions.merge()).await()
+            lastPushedProfile = profile
         } catch (_: Exception) {
             // Ignore offline network errors
         }

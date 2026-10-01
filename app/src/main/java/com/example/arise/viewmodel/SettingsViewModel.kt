@@ -101,7 +101,7 @@ class SettingsViewModel @Inject constructor(
                 // Local DB update is primary, ignoring network edge case
             }
 
-            repository.logEvent(LogIcon.INFO, "System Profile Updated: Hunter codename set to '$trimmed'.")
+            repository.logEvent(LogIcon.INFO, "Changed codename to '$trimmed'.")
         }
     }
 
@@ -109,8 +109,8 @@ class SettingsViewModel @Inject constructor(
         prefs.edit().putBoolean("systemReminders", enabled).apply()
         _uiState.update { it.copy(systemReminders = enabled) }
         viewModelScope.launch {
-            val status = if (enabled) "ACTIVATED" else "DEACTIVATED"
-            repository.logEvent(LogIcon.INFO, "System Reminders $status.")
+            val status = if (enabled) "enabled" else "disabled"
+            repository.logEvent(LogIcon.INFO, "Reminders $status.")
         }
     }
 
@@ -118,8 +118,8 @@ class SettingsViewModel @Inject constructor(
         prefs.edit().putBoolean("isLightThemeEnabled", enabled).apply()
         _uiState.update { it.copy(isLightThemeEnabled = enabled) }
         viewModelScope.launch {
-            val modeName = if (enabled) "LIGHT NEUMORPHIC" else "DARK MONARCH"
-            repository.logEvent(LogIcon.INFO, "System Theme switched to $modeName Mode.")
+            val modeName = if (enabled) "Light" else "Dark"
+            repository.logEvent(LogIcon.INFO, "Switched to $modeName theme.")
         }
     }
 
@@ -132,12 +132,12 @@ class SettingsViewModel @Inject constructor(
             val uri = _uiState.value.alarmAudioUri
             AlarmScheduler.scheduleDailyAlarm(context, h, m, uri)
             viewModelScope.launch {
-                repository.logEvent(LogIcon.INFO, "System Alarm Activated for ${_uiState.value.alarmTimeDisplay}.")
+                repository.logEvent(LogIcon.INFO, "Wake-up alarm set for ${_uiState.value.alarmTimeDisplay}.")
             }
         } else {
             AlarmScheduler.cancelDailyAlarm(context)
             viewModelScope.launch {
-                repository.logEvent(LogIcon.INFO, "System Alarm Deactivated.")
+                repository.logEvent(LogIcon.INFO, "Wake-up alarm turned off.")
             }
         }
     }
@@ -165,7 +165,7 @@ class SettingsViewModel @Inject constructor(
         }
         AlarmScheduler.scheduleDailyAlarm(context, hour, minute, uri)
         viewModelScope.launch {
-            repository.logEvent(LogIcon.INFO, "System Alarm Scheduled: Set to $formattedTime daily.")
+            repository.logEvent(LogIcon.INFO, "Alarm rescheduled to $formattedTime daily.")
         }
     }
 
@@ -185,7 +185,7 @@ class SettingsViewModel @Inject constructor(
                 val m = _uiState.value.alarmMinute
                 AlarmScheduler.scheduleDailyAlarm(context, h, m, uriString)
             }
-            repository.logEvent(LogIcon.INFO, "System Alarm Tone set to '$toneName'.")
+            repository.logEvent(LogIcon.INFO, "Alarm tone changed to '$toneName'.")
         }
     }
 
@@ -203,13 +203,13 @@ class SettingsViewModel @Inject constructor(
         prefs.edit().putString("language", lang).apply()
         _uiState.update { it.copy(language = lang) }
         viewModelScope.launch {
-            repository.logEvent(LogIcon.INFO, "System Interface Language set to '$lang'.")
+            repository.logEvent(LogIcon.INFO, "Language changed to '$lang'.")
         }
     }
 
     fun submitReport(category: String, details: String) {
         viewModelScope.launch {
-            val reportId = "R-${System.currentTimeMillis() % 100000}"
+            val reportId = java.util.UUID.randomUUID().toString().take(12)
             val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
             val uid = currentUser?.uid ?: "anonymous"
             val email = currentUser?.email ?: "anonymous@arise.app"
@@ -254,15 +254,15 @@ class SettingsViewModel @Inject constructor(
                 
                 repository.logEvent(
                     LogIcon.INFO,
-                    "Report Logged [#$reportId]: Category: '$category' | Target: $developerEmail"
+                    "Submitted report #$reportId ($category)."
                 )
                 _uiState.update {
                     it.copy(reportSubmittedMessage = "Report #$reportId transmitted directly to Cloud Databases for $developerEmail.")
                 }
             } catch (e: Exception) {
                 repository.logEvent(
-                    LogIcon.INFO,
-                    "Report [#$reportId] saved locally. Cloud sync failed: ${e.message}"
+                    LogIcon.WARNING,
+                    "Report #$reportId saved locally (offline)."
                 )
                 _uiState.update {
                     it.copy(reportSubmittedMessage = "Report #$reportId saved locally. Cloud sync pending.")
@@ -279,7 +279,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val profile = repository.getProfileOnce() ?: return@launch
             repository.upsertProfile(profile.copy(avatarUri = uri))
-            repository.logEvent(LogIcon.INFO, "Hunter Profile Avatar updated successfully.")
+            repository.logEvent(LogIcon.INFO, "Updated profile avatar.")
         }
     }
 }

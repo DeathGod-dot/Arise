@@ -182,14 +182,14 @@ fun StatusScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "SYSTEM LOG",
+                            text = "ACTIVITY HISTORY",
                             style = SystemLabel.copy(letterSpacing = 2.sp),
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(4.dp))
                         if (state.logs.isEmpty()) {
                             Text(
-                                text = "No system events recorded.",
+                                text = "No activity recorded yet.",
                                 style = SystemLabel,
                                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                 textAlign = TextAlign.Center,
@@ -199,11 +199,13 @@ fun StatusScreen(
                             )
                         } else {
                             state.logs.take(10).forEach { log ->
-                                SystemLogEntryItem(
-                                    icon = log.icon,
-                                    message = log.message,
-                                    timestamp = log.timestamp
-                                )
+                                key(log.id) {
+                                    SystemLogEntryItem(
+                                        icon = log.icon,
+                                        message = log.message,
+                                        timestamp = log.timestamp
+                                    )
+                                }
                             }
                         }
                     }
@@ -211,7 +213,7 @@ fun StatusScreen(
             }
         }
 
-        Spacer(Modifier.height(72.dp)) // Bottom nav clearance
+        Spacer(Modifier.height(20.dp)) // Bottom nav clearance
     }
 }
 

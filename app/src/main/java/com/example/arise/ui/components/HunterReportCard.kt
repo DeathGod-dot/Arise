@@ -72,6 +72,11 @@ fun HunterReportCard(
         animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing), RepeatMode.Restart),
         label = "scanLine"
     )
+    val rippleProgress by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Restart),
+        label = "ripple"
+    )
 
     val primaryColor = cs.primary
     val onSurface = cs.onSurface
@@ -80,19 +85,34 @@ fun HunterReportCard(
     val accentColor = if (isSpecial) Color(0xFFFFD700) else primaryColor
     val cardBg = cs.surfaceContainerLowest.copy(alpha = if (isLight) 0.95f else 0.75f)
 
-    // Border gradient
-    val borderBrush = Brush.linearGradient(
-        colors = if (isSpecial) {
-            listOf(Color(0xFFFFD700).copy(alpha = glowAlpha), Color(0xFF38BDF8), Color(0xFFFFD700).copy(alpha = glowAlpha))
-        } else {
-            listOf(rankColor.copy(alpha = 0.7f * glowAlpha), primaryColor.copy(alpha = 0.5f), rankColor.copy(alpha = 0.4f * glowAlpha))
-        }
-    )
+    // Border gradient colors (static — animation applied via graphicsLayer)
+    val borderColorsSpecial = listOf(Color(0xFFFFD700), Color(0xFF38BDF8), Color(0xFFFFD700))
+    val borderColorsNormal = listOf(rankColor.copy(alpha = 0.7f), primaryColor.copy(alpha = 0.5f), rankColor.copy(alpha = 0.4f))
+    val borderWidth = if (isSpecial) 2.dp else 1.dp
 
     GlassmorphicCard(
         modifier = modifier
             .fillMaxWidth()
-            .border(width = if (isSpecial) 2.dp else 1.dp, brush = borderBrush, shape = SciFiCutCornerShape())
+            .graphicsLayer { } // Isolate recomposition
+            .drawBehind {
+                // Draw animated border in draw phase — reads glowAlpha here, not in composition
+                val colors = if (isSpecial) {
+                    borderColorsSpecial.map { it.copy(alpha = glowAlpha) }
+                } else {
+                    listOf(
+                        borderColorsNormal[0].copy(alpha = 0.7f * glowAlpha),
+                        borderColorsNormal[1],
+                        borderColorsNormal[2].copy(alpha = 0.4f * glowAlpha)
+                    )
+                }
+                val brush = Brush.linearGradient(colors)
+                val strokePx = borderWidth.toPx()
+                drawRoundRect(
+                    brush = brush,
+                    style = Stroke(width = strokePx),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx())
+                )
+            }
     ) {
         Column(
             modifier = Modifier
@@ -159,76 +179,118 @@ fun HunterReportCard(
                 // ═══════════════════════════════════════════
                 // SECTION 2: IDENTITY PANEL (Badge + Info + Stats)
                 // ═══════════════════════════════════════════
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(cardBg)
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Rank Badge with animated glow ring
-                    Box(contentAlignment = Alignment.Center) {
-                        // Outer animated ring
-                        Canvas(modifier = Modifier.size(56.dp)) {
-                            drawCircle(
-                                color = rankColor.copy(alpha = 0.15f * glowAlpha),
-                                radius = size.minDimension / 2f
-                            )
-                            drawCircle(
-                                color = rankColor.copy(alpha = 0.6f * glowAlpha),
-                                radius = size.minDimension / 2f - 2.dp.toPx(),
-                                style = Stroke(width = 1.5.dp.toPx())
-                            )
+                    // Animated Grid/Circuit Pattern
+                    Canvas(modifier = Modifier.matchParentSize()) {
+                        val gridSize = 12.dp.toPx()
+                        val gridAlpha = 0.05f * glowAlpha
+                        val gridColor = if (isLight) primaryColor.copy(alpha = gridAlpha) else AriseTertiary.copy(alpha = gridAlpha)
+                        
+                        var x = 0f
+                        while (x < size.width) {
+                            drawLine(color = gridColor, start = Offset(x, 0f), end = Offset(x, size.height), strokeWidth = 1.dp.toPx())
+                            x += gridSize
                         }
-                        RankBadge(rank = profile.rank, size = 48)
-                    }
-
-                    // Identity details
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = profile.username.uppercase(),
-                            style = AriseTypography.titleMedium.copy(
-                                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp, fontSize = 16.sp
-                            ),
-                            color = onSurface,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${profile.rank.displayName} Hunter",
-                            style = SystemLabel.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-                            color = rankColor
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                text = "AGE: ${profile.age}",
-                                style = SystemLabel.copy(fontSize = 9.sp, fontWeight = FontWeight.Medium),
-                                color = onSurfaceVar
-                            )
-                            Text(
-                                text = "WT: ${String.format("%.1f", profile.weightKg)}KG",
-                                style = SystemLabel.copy(fontSize = 9.sp, fontWeight = FontWeight.Medium),
-                                color = onSurfaceVar
-                            )
+                        var y = 0f
+                        while (y < size.height) {
+                            drawLine(color = gridColor, start = Offset(0f, y), end = Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                            y += gridSize
                         }
                     }
 
-                    // Combat Power Score (visual indicator)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val combatPower = profile.str + profile.agi + profile.vit + profile.int_stat + profile.sen
-                        Text(
-                            text = "$combatPower",
-                            style = DisplayRank.copy(fontSize = 22.sp),
-                            color = accentColor
-                        )
-                        Text(
-                            text = "POWER",
-                            style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold),
-                            color = onSurfaceVar
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Rank Badge with animated glow ring
+                        Box(contentAlignment = Alignment.Center) {
+                            // Outer animated ring
+                            Canvas(modifier = Modifier.size(56.dp)) {
+                                drawCircle(
+                                    color = rankColor.copy(alpha = 0.15f * glowAlpha),
+                                    radius = size.minDimension / 2f
+                                )
+                                drawCircle(
+                                    color = rankColor.copy(alpha = 0.6f * glowAlpha),
+                                    radius = size.minDimension / 2f - 2.dp.toPx(),
+                                    style = Stroke(width = 1.5.dp.toPx())
+                                )
+                            }
+                            RankBadge(rank = profile.rank, size = 48)
+                        }
+
+                        // Identity details
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = profile.username.uppercase(),
+                                style = AriseTypography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp, fontSize = 16.sp
+                                ),
+                                color = onSurface,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                            val userIdHash = profile.username.hashCode().toString(16).uppercase().take(6).padStart(6, '0')
+                            Text(
+                                text = "ID: HNT-$userIdHash",
+                                style = SystemLabel.copy(fontSize = 8.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Medium),
+                                color = primaryColor.copy(alpha = 0.8f)
+                            )
+                            Text(
+                                text = "${profile.rank.displayName} Hunter",
+                                style = SystemLabel.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+                                color = rankColor
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text(
+                                    text = "AGE: ${profile.age}",
+                                    style = SystemLabel.copy(fontSize = 9.sp, fontWeight = FontWeight.Medium),
+                                    color = onSurfaceVar
+                                )
+                                Text(
+                                    text = "WT: ${String.format("%.1f", profile.weightKg)}KG",
+                                    style = SystemLabel.copy(fontSize = 9.sp, fontWeight = FontWeight.Medium),
+                                    color = onSurfaceVar
+                                )
+                            }
+                        }
+
+                        // Combat Power Score (visual indicator)
+                        Box(contentAlignment = Alignment.Center) {
+                            Canvas(modifier = Modifier.size(64.dp)) {
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(accentColor.copy(alpha = 0.25f * glowAlpha), Color.Transparent)
+                                    ),
+                                    radius = size.minDimension / 2f
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                val combatPower = profile.str + profile.agi + profile.vit + profile.int_stat + profile.sen
+                                Text(
+                                    text = "$combatPower",
+                                    style = DisplayRank.copy(fontSize = 22.sp),
+                                    color = accentColor
+                                )
+                                Text(
+                                    text = "POWER",
+                                    style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold),
+                                    color = onSurfaceVar
+                                )
+                            }
+                        }
                     }
                 }
+
+                // ── Section Divider ──
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(
+                    Brush.horizontalGradient(listOf(Color.Transparent, accentColor.copy(alpha = 0.25f), Color.Transparent))
+                ))
 
                 // ═══════════════════════════════════════════
                 // SECTION 3: ATTRIBUTE BREAKDOWN (5 bars)
@@ -236,9 +298,7 @@ fun HunterReportCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(cardBg)
-                        .padding(10.dp),
+                        .padding(horizontal = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Row(
@@ -255,7 +315,7 @@ fun HunterReportCard(
                             text = "LIVE_SCAN",
                             style = SystemLabel.copy(fontSize = 8.sp, letterSpacing = 1.sp),
                             color = onSurfaceVar.copy(alpha = 0.6f),
-                            modifier = Modifier.alpha(glowAlpha)
+                            modifier = Modifier.graphicsLayer { alpha = glowAlpha }
                         )
                     }
 
@@ -266,7 +326,8 @@ fun HunterReportCard(
                         Triple("INT", profile.int_stat, Color(0xFFA855F7)),
                         Triple("SEN", profile.sen, Color(0xFFF59E0B))
                     )
-                    val maxStat = (stats.maxOfOrNull { it.second } ?: 10).coerceAtLeast(10)
+                    val maxStat = (stats.maxOfOrNull { it.second } ?: 10).coerceAtLeast((profile.rank.statCap / 2).coerceAtLeast(10))
+                    val avgStat = stats.map { it.second }.average()
 
                     stats.forEach { (name, value, color) ->
                         val isHighest = name == data.strengthStatName
@@ -277,7 +338,7 @@ fun HunterReportCard(
                             isHighest -> color
                             else -> color.copy(alpha = 0.8f)
                         }
-                        val barBgColor = if (isLight) cs.outlineVariant.copy(alpha = 0.4f) else Color(0xFF1A1A2E)
+                        val barBgColor = if (isLight) cs.outlineVariant.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.07f)
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -310,6 +371,21 @@ fun HunterReportCard(
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(barBgColor)
                             ) {
+                                // Notch marks
+                                Canvas(modifier = Modifier.matchParentSize()) {
+                                    val notchCount = 10
+                                    val notchSpacing = size.width / notchCount
+                                    for (i in 1 until notchCount) {
+                                        val nx = i * notchSpacing
+                                        drawLine(
+                                            color = onSurfaceVar.copy(alpha = 0.2f),
+                                            start = Offset(nx, 0f),
+                                            end = Offset(nx, size.height),
+                                            strokeWidth = 1.dp.toPx()
+                                        )
+                                    }
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .fillMaxHeight()
@@ -321,6 +397,22 @@ fun HunterReportCard(
                                             )
                                         )
                                 )
+                                
+                                if (isHighest) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(progress)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .graphicsLayer { alpha = glowAlpha }
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.4f), Color.Transparent)
+                                                )
+                                            )
+                                    )
+                                }
+
                                 // Scan beam effect on the bar
                                 if (!isLight) {
                                     Box(
@@ -342,16 +434,28 @@ fun HunterReportCard(
                             }
 
                             // Stat value
-                            Text(
-                                text = "$value",
-                                style = SystemLabel.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                ),
-                                color = if (isHighest) barColor else onSurface,
-                                modifier = Modifier.width(24.dp),
-                                textAlign = TextAlign.End
-                            )
+                            Row(
+                                modifier = Modifier.width(36.dp),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "$value",
+                                    style = SystemLabel.copy(
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    ),
+                                    color = if (isHighest) barColor else onSurface
+                                )
+                                if (value > avgStat) {
+                                    Text(
+                                        text = "▲",
+                                        style = SystemLabel.copy(fontSize = 8.sp),
+                                        color = if (isHighest) barColor else AriseTertiary,
+                                        modifier = Modifier.padding(start = 2.dp)
+                                    )
+                                }
+                            }
 
                             // Highest/Lowest indicator
                             Box(modifier = Modifier.width(14.dp)) {
@@ -365,99 +469,149 @@ fun HunterReportCard(
                     }
                 }
 
+                // ── Section Divider ──
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(
+                    Brush.horizontalGradient(listOf(Color.Transparent, accentColor.copy(alpha = 0.25f), Color.Transparent))
+                ))
+
                 // ═══════════════════════════════════════════
                 // SECTION 4: MISSION STATUS + RANK PROGRESS
                 // ═══════════════════════════════════════════
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(androidx.compose.foundation.layout.IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Mission Stats
+                    // Combat Profile
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(cardBg)
                             .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "MISSION LOG",
+                            text = "COMBAT PROFILE",
                             style = SystemLabel.copy(fontSize = 8.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold),
                             color = onSurfaceVar
                         )
 
-                        // Total Cleared
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(AriseTertiary.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
+                        // Compute stat balance: how evenly distributed the 5 stats are (0-100%)
+                        val statValues = listOf(profile.str, profile.agi, profile.vit, profile.int_stat, profile.sen)
+                        val minStatVal = statValues.min()
+                        val maxStatVal = statValues.max().coerceAtLeast(1)
+                        val balance = ((minStatVal.toFloat() / maxStatVal.toFloat()) * 100).toInt()
+                        val balanceColor = when {
+                            balance >= 80 -> AriseTertiary
+                            balance >= 50 -> Color(0xFFF59E0B)
+                            else -> AriseDangerRed
+                        }
+
+                        // Format total XP
+                        val formattedXp = when {
+                            profile.totalXp >= 1_000_000 -> String.format("%.1fM", profile.totalXp / 1_000_000f)
+                            profile.totalXp >= 1_000 -> String.format("%.1fK", profile.totalXp / 1_000f)
+                            else -> "${profile.totalXp}"
+                        }
+
+                        // 2x2 Metric Grid — Row 1
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Total XP
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
                             ) {
-                                Icon(Icons.Default.CheckCircle, null, tint = AriseTertiary, modifier = Modifier.size(12.dp))
+                                Text(formattedXp, style = SystemLabel.copy(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold), color = accentColor)
+                                Text("TOTAL XP", style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 1.sp), color = onSurfaceVar)
                             }
-                            Column {
-                                Text("${data.totalClearedQuests}", style = SystemLabel.copy(fontSize = 14.sp, fontWeight = FontWeight.ExtraBold), color = AriseTertiary)
+                            // Quests Cleared
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
+                            ) {
+                                Text("${data.totalClearedQuests}", style = SystemLabel.copy(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold), color = AriseTertiary)
                                 Text("CLEARED", style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 1.sp), color = onSurfaceVar)
                             }
                         }
 
-                        // Pending Today
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val isAllDone = data.pendingQuestsToday == 0
-                            val pendingColor = if (isAllDone) AriseTertiary else AriseSecondaryDim
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(pendingColor.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
+                        // 2x2 Metric Grid — Row 2
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Level
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
                             ) {
-                                Icon(
-                                    if (isAllDone) Icons.Default.DoneAll else Icons.Default.HourglassTop,
-                                    null, tint = pendingColor, modifier = Modifier.size(12.dp)
-                                )
+                                Text("${profile.level}", style = SystemLabel.copy(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold), color = if (isLight) AriseLightTertiary else AriseTertiary)
+                                Text("LEVEL", style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 1.sp), color = onSurfaceVar)
                             }
-                            Column {
-                                Text(
-                                    if (isAllDone) "DONE" else "${data.pendingQuestsToday}",
-                                    style = SystemLabel.copy(fontSize = 14.sp, fontWeight = FontWeight.ExtraBold),
-                                    color = pendingColor
-                                )
-                                Text(
-                                    if (isAllDone) "ALL CLEAR" else "PENDING",
-                                    style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 1.sp),
-                                    color = onSurfaceVar
-                                )
+                            // Stat Balance
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
+                            ) {
+                                Text("${balance}%", style = SystemLabel.copy(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold), color = balanceColor)
+                                Text("BALANCE", style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 1.sp), color = onSurfaceVar)
                             }
                         }
 
-                        // Streak
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFF59E0B).copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("🔥", fontSize = 10.sp)
-                            }
-                            Column {
-                                Text("${profile.streakDays}", style = SystemLabel.copy(fontSize = 14.sp, fontWeight = FontWeight.ExtraBold), color = Color(0xFFF59E0B))
-                                Text("STREAK", style = SystemLabel.copy(fontSize = 7.sp, letterSpacing = 1.sp), color = onSurfaceVar)
-                            }
+                        // Streak row
+                        val isHighStreak = profile.streakDays > 7
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (isHighStreak) Brush.horizontalGradient(
+                                        listOf(Color(0xFFF59E0B).copy(alpha = 0.15f), Color(0xFFEF4444).copy(alpha = 0.08f))
+                                    ) else Brush.horizontalGradient(
+                                        listOf(Color(0xFFF59E0B).copy(alpha = 0.08f), Color.Transparent)
+                                    )
+                                )
+                                .then(
+                                    if (isHighStreak) Modifier.border(0.5.dp, Color(0xFFF59E0B).copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                                    else Modifier
+                                )
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text("\uD83D\uDD25", fontSize = 12.sp)
+                            Text(
+                                "${profile.streakDays}",
+                                style = SystemLabel.copy(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold),
+                                color = Color(0xFFF59E0B)
+                            )
+                            Text(
+                                "DAY STREAK",
+                                style = SystemLabel.copy(fontSize = 8.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold),
+                                color = onSurfaceVar
+                            )
                         }
                     }
 
                     // Rank Progress
+                    // Thin vertical separator
+                    Box(modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(Brush.verticalGradient(
+                            listOf(Color.Transparent, accentColor.copy(alpha = 0.2f), Color.Transparent)
+                        ))
+                    )
+
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(cardBg)
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -482,11 +636,17 @@ fun HunterReportCard(
                             label = "rankProgress"
                         )
 
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(72.dp)) {
-                            Canvas(modifier = Modifier.size(72.dp)) {
-                                val strokeWidth = 5.dp.toPx()
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
+                            Canvas(modifier = Modifier.size(100.dp)) {
+                                // Animated ripple
+                                drawCircle(
+                                    color = rankColor.copy(alpha = (1f - rippleProgress) * 0.3f),
+                                    radius = (size.minDimension / 2f) * (0.8f + 0.4f * rippleProgress)
+                                )
+
+                                val strokeWidth = 6.dp.toPx()
                                 val sweepAngle = 360f * animatedRankProgress
-                                val bgColor = if (isLight) Color(0xFFE2E8F0) else Color(0xFF1A1A2E)
+                                val bgColor = if (isLight) Color(0xFFE2E8F0) else Color.White.copy(alpha = 0.08f)
 
                                 // Background ring
                                 drawArc(
@@ -548,6 +708,11 @@ fun HunterReportCard(
                     }
                 }
 
+                // ── Section Divider ──
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(
+                    Brush.horizontalGradient(listOf(Color.Transparent, accentColor.copy(alpha = 0.25f), Color.Transparent))
+                ))
+
                 // ═══════════════════════════════════════════
                 // SECTION 5: SYSTEM ANALYSIS (expandable)
                 // ═══════════════════════════════════════════
@@ -555,10 +720,9 @@ fun HunterReportCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(cardBg)
                         .border(
-                            1.dp,
-                            if (isLight) cs.outlineVariant.copy(alpha = 0.5f) else AriseOutlineVariant.copy(alpha = 0.3f),
+                            0.5.dp,
+                            if (isLight) cs.outlineVariant.copy(alpha = 0.3f) else accentColor.copy(alpha = 0.12f),
                             RoundedCornerShape(8.dp)
                         )
                         .clickable { isExpanded = !isExpanded }
@@ -768,14 +932,32 @@ fun HunterReportCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp)
+                    .height(3.dp)
+                    .drawBehind {
+                        val beamWidth = size.width * 0.3f
+                        val beamStart = size.width * scanLinePos - beamWidth / 2
+                        
+                        drawIntoCanvas { canvas ->
+                            val paint = Paint().apply {
+                                color = accentColor
+                                asFrameworkPaint().maskFilter = BlurMaskFilter(15f, BlurMaskFilter.Blur.NORMAL)
+                            }
+                            canvas.drawRect(
+                                left = beamStart + beamWidth * 0.2f, 
+                                top = 0f, 
+                                right = beamStart + beamWidth * 0.8f, 
+                                bottom = size.height, 
+                                paint = paint
+                            )
+                        }
+                    }
             ) {
                 Canvas(modifier = Modifier.matchParentSize()) {
                     val beamWidth = size.width * 0.3f
                     val beamStart = size.width * scanLinePos - beamWidth / 2
                     drawRect(
                         brush = Brush.horizontalGradient(
-                            colors = listOf(Color.Transparent, accentColor.copy(alpha = 0.6f), Color.Transparent),
+                            colors = listOf(Color.Transparent, accentColor, Color.Transparent),
                             startX = beamStart,
                             endX = beamStart + beamWidth
                         )

@@ -13,17 +13,18 @@ object QuestFactory {
     fun createDailyQuests(date: LocalDate = LocalDate.now()): List<Pair<QuestEntity, List<SubObjectiveEntity>>> {
         val dateStr = date.format(dateFormat)
         val endOfDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val uid = UUID.randomUUID().toString().take(8)
 
         return listOf(
-            createPhysicalQuest(dateStr, endOfDay),
-            createConsumptionLogQuest(dateStr, endOfDay),
-            createStudyQuest(dateStr, endOfDay),
-            createMeditationQuest(dateStr, endOfDay),
+            createPhysicalQuest(dateStr, endOfDay, uid),
+            createConsumptionLogQuest(dateStr, endOfDay, uid),
+            createStudyQuest(dateStr, endOfDay, uid),
+            createMeditationQuest(dateStr, endOfDay, uid),
         )
     }
 
-    private fun createPhysicalQuest(dateStr: String, deadline: Long): Pair<QuestEntity, List<SubObjectiveEntity>> {
-        val questId = "physical_$dateStr"
+    private fun createPhysicalQuest(dateStr: String, deadline: Long, uid: String): Pair<QuestEntity, List<SubObjectiveEntity>> {
+        val questId = "physical_${dateStr}_${uid}"
         val quest = QuestEntity(
             id = questId,
             title = "Preparation for the Strong",
@@ -49,8 +50,8 @@ object QuestFactory {
         return quest to subs
     }
 
-    private fun createConsumptionLogQuest(dateStr: String, deadline: Long): Pair<QuestEntity, List<SubObjectiveEntity>> {
-        val questId = "consumption_$dateStr"
+    private fun createConsumptionLogQuest(dateStr: String, deadline: Long, uid: String): Pair<QuestEntity, List<SubObjectiveEntity>> {
+        val questId = "consumption_${dateStr}_${uid}"
         val quest = QuestEntity(
             id = questId,
             title = "Daily Consumption Log",
@@ -64,14 +65,14 @@ object QuestFactory {
             dayAssigned = dateStr,
         )
         val subs = listOf(
-            SubObjectiveEntity(id = "${questId}_calories", questId = questId, label = "Calorie Intake", type = SubObjectiveType.NUMERIC_LOG, target = 1, unit = "KCAL", sortOrder = 0),
-            SubObjectiveEntity(id = "${questId}_water", questId = questId, label = "Water Intake", type = SubObjectiveType.NUMERIC_LOG, target = 1, unit = "ML", sortOrder = 1),
+            SubObjectiveEntity(id = "${questId}_calories", questId = questId, label = "Calorie Intake", type = SubObjectiveType.NUMERIC_LOG, target = 2000, unit = "KCAL", sortOrder = 0),
+            SubObjectiveEntity(id = "${questId}_water", questId = questId, label = "Water Intake", type = SubObjectiveType.NUMERIC_LOG, target = 2500, unit = "ML", sortOrder = 1),
         )
         return quest to subs
     }
 
-    private fun createStudyQuest(dateStr: String, deadline: Long): Pair<QuestEntity, List<SubObjectiveEntity>> {
-        val questId = "study_$dateStr"
+    private fun createStudyQuest(dateStr: String, deadline: Long, uid: String): Pair<QuestEntity, List<SubObjectiveEntity>> {
+        val questId = "study_${dateStr}_${uid}"
         val quest = QuestEntity(
             id = questId,
             title = "Study Session",
@@ -92,8 +93,8 @@ object QuestFactory {
         return quest to subs
     }
 
-    private fun createMeditationQuest(dateStr: String, deadline: Long): Pair<QuestEntity, List<SubObjectiveEntity>> {
-        val questId = "meditation_$dateStr"
+    private fun createMeditationQuest(dateStr: String, deadline: Long, uid: String): Pair<QuestEntity, List<SubObjectiveEntity>> {
+        val questId = "meditation_${dateStr}_${uid}"
         val quest = QuestEntity(
             id = questId,
             title = "Meditation",

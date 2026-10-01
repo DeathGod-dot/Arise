@@ -60,8 +60,10 @@ class AriseRepository @Inject constructor(
         questDao.updateQuestStatus(questId, status.name, completedAt)
     suspend fun updateSubObjective(id: String, current: Int, isComplete: Boolean) =
         questDao.updateSubObjective(id, current, isComplete)
+    suspend fun atomicIncrementSubObjective(id: String, amount: Int) =
+        questDao.atomicIncrementSubObjective(id, amount)
     suspend fun updateProofImage(id: String, uri: String) = questDao.updateProofImage(id, uri)
-    suspend fun updateReflection(questId: String, text: String) =
+    suspend fun updateReflection(questId: String, text: String?) =
         questDao.updateReflection(questId, text)
     suspend fun getIncompleteQuestCount(date: LocalDate): Int =
         questDao.getIncompleteQuestCount(date.format(dateFormat))

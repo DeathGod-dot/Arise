@@ -86,7 +86,7 @@ class AuthViewModel @Inject constructor(
             if (result.isSuccess) {
                 val res = result.getOrThrow()
                 _uiState.update { it.copy(isLoading = false, errorMessage = null) }
-                ariseRepository.logEvent(LogIcon.INFO, "System Access Granted: Hunter authenticated.")
+                ariseRepository.logEvent(LogIcon.INFO, "Signed in successfully.")
             } else {
                 val err = result.exceptionOrNull()!!
                 val userMsg = when {
@@ -118,7 +118,7 @@ class AuthViewModel @Inject constructor(
                 val res = result.getOrThrow()
                 _uiState.update { it.copy(isLoading = false, errorMessage = null) }
                 val finalName = if (username.isNotBlank()) username.trim() else email.substringBefore("@")
-                ariseRepository.logEvent(LogIcon.INFO, "New Hunter Registered: '$finalName'.")
+                ariseRepository.logEvent(LogIcon.INFO, "Account created as '$finalName'.")
             } else {
                 val err = result.exceptionOrNull()!!
                 val userMsg = when {
@@ -160,7 +160,7 @@ class AuthViewModel @Inject constructor(
                 onSuccess = { res ->
                     _uiState.update { it.copy(isLoading = false, errorMessage = null) }
                     val name = res.user?.displayName ?: res.user?.email?.substringBefore("@") ?: "HUNTER"
-                    ariseRepository.logEvent(LogIcon.INFO, "Google Access Verified: '$name'.")
+                    ariseRepository.logEvent(LogIcon.INFO, "Signed in via Google as '$name'.")
                 },
                 onFailure = { err ->
                     _uiState.update { it.copy(isLoading = false, errorMessage = err.localizedMessage ?: err.message ?: "Google Authentication Failed.") }
@@ -171,7 +171,7 @@ class AuthViewModel @Inject constructor(
 
     fun signOut() {
         viewModelScope.launch {
-            ariseRepository.logEvent(LogIcon.INFO, "System Access Deactivated: Hunter Logged Out.")
+            ariseRepository.logEvent(LogIcon.INFO, "Logged out.")
             authRepository.signOut()
         }
     }
