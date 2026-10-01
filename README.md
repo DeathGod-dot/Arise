@@ -128,9 +128,9 @@ app/src/main/java/com/example/arise/
 
 ## 📸 Screenshots
 
-| Status Screen | Hunter Report Card |
-|:---:|:---:|
-| <img src="screenshots/status.png" width="320"/> | <img src="screenshots/report.png" width="320"/> |
+| Status Screen | Gate Screen | Settings Screen |
+|:---:|:---:|:---:|
+| <img src="screenshots/status.png" width="280"/> | <img src="screenshots/gate.png" width="280"/> | <img src="screenshots/settings.png" width="280"/> |
 
 ---
 
